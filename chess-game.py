@@ -43,27 +43,66 @@ def starting_board():
         ['wr','wn','wb','wq','wk','wb','wn','wr']
     ]
 
+def get_king_squares(board: chess.Board):
+    def info(sq):
+        if sq is None:
+            return None
+        name = chess.square_name(sq)        # e.g. "e1"
+        file = chess.square_file(sq)        # 0..7 (a..h)
+        rank = chess.square_rank(sq)        # 0..7 (1..8)
+        row = 7 - rank                      # draw row (0 at top)
+        col = file                          # draw col (0 at left)
+        return {"sq_index": sq, "name": name, "file": file, "rank": rank, "row": row, "col": col}
+
+    return {"white": info(board.king(chess.WHITE)), "black": info(board.king(chess.BLACK))}
+
+# Example:
+b = chess.Board()
+print(get_king_squares(b))
+
 # draws the chessboard and places the images of the pieces in their squares. 
 # It also highlights the legal moves for a selected piece using an marker image.
 
-def draw_board(screen, board, images, legal_moves=None):
+def draw_board(screen, board, images, legal_moves=None, board_obj=None):
     white = (255, 213, 153)
     black = (177, 110, 65)
     font = pygame.font.SysFont(None, 28)
+
+    # --- KING IN CHECK LOGIC ---
+    king_in_check = False
+    king_row = king_col = None
+
+    if board_obj.is_check():
+        king_sq = board_obj.king(board_obj.turn)
+        king_rank = chess.square_rank(king_sq)
+        king_file = chess.square_file(king_sq)
+        king_row = 7 - king_rank
+        king_col = king_file
+        king_in_check = True
+    # ----------------------------
+
     for row in range(8):
         for col in range(8):
             color = white if (row + col) % 2 == 0 else black
             rect = (col * SQUARE, row * SQUARE, SQUARE, SQUARE)
             pygame.draw.rect(screen, color, rect)
+
+            # --- HIGHLIGHT KING IN CHECK ---
+            if king_in_check and row == king_row and col == king_col:
+                overlay = pygame.Surface((SQUARE, SQUARE), pygame.SRCALPHA)
+                overlay.fill((255, 0, 0, 90))  # translucent red
+                screen.blit(overlay, (col * SQUARE, row * SQUARE))
+            # --------------------------------
+
             piece = board[row][col]
             if piece:
                 img = images.get(piece)
                 if img:
                     screen.blit(img, (col * SQUARE, row * SQUARE))
                 else:
-                    # fallback: draw a simple text marker if image missing
                     lbl = font.render(piece, True, (255,0,0))
                     screen.blit(lbl, (col * SQUARE + 8, row * SQUARE + 8))
+
             # Draw identifier on legal move squares
             if legal_moves and images.get('identifier'):
                 for move in legal_moves:
@@ -74,6 +113,7 @@ def draw_board(screen, board, images, legal_moves=None):
                     to_col = to_file
                     if to_row == row and to_col == col:
                         screen.blit(images['identifier'], (col * SQUARE, row * SQUARE))
+
 
 # sets up the Pygame window, handles events, and updates the display. It uses the python-chess library to manage the game state and determine legal moves.
 
@@ -89,19 +129,13 @@ def board():
     board_obj = chess.Board()
 
     # --- Engine configuration (edit `STOCKFISH_PATH` to your binary) ---
-    STOCKFISH_PATH = r"\\stockfish\\stockfish-windows-x86-64-avx2.exe"  # unzip stockfish engine after download
+    STOCKFISH_PATH = r"C:\\Users\\ameri\\Downloads\\stockfish\\stockfish\\stockfish-windows-x86-64-avx2.exe"
     play_vs_engine = True
     engine_color = chess.BLACK  # engine plays as BLACK by default
 
     engine = None
     engine_lock = threading.Lock()
     engine_thinking = False
-    is_checkmate = False
-    is_stalemate = False
-    is_check = False
-    is_insufficient_material = False
-    is_threefold_repetition = False
-    
 
     if play_vs_engine:
         try:
@@ -179,8 +213,22 @@ def board():
                             break
 
                     if move:
-                        board_obj.push(move)
+                        board_obj.push(move)                # or board_obj.push(res.move)
                         board_state = board_from_chess(board_obj)
+
+                        if board_obj.is_check():
+                            print(f"{'White' if board_obj.turn == chess.WHITE else 'Black'} is in check")
+                            king_square = board_obj.king(board_obj.turn)
+                            row = 7 - (king_square // 8)
+                            col = king_square % 8
+                            square_rect = 100 * col, 100 * row, 100, 100
+                            pygame.draw.rect(screen, (255, 0, 0), square_rect, 5)  # 5 = border thickness
+
+                        if board_obj.is_checkmate():
+                            print(f"{'White' if board_obj.turn == chess.WHITE else 'Black'} has been checkmated!")
+                        if board_obj.is_stalemate():
+                            print("Game ends in stalemate")
+
                         selected_square = None
                         selected_legal_moves = []
 
@@ -194,6 +242,14 @@ def board():
                                         res = engine.play(board_obj, chess.engine.Limit(time=0.3))
                                         board_obj.push(res.move)
                                         board_state = board_from_chess(board_obj)
+
+                                        # report check after engine move
+                                        if board_obj.is_check():
+                                            print(f"{'White' if board_obj.turn == chess.WHITE else 'Black'} is in check")
+                                        if board_obj.is_checkmate():
+                                            print(f"{'White' if board_obj.turn == chess.WHITE else 'Black'} has been checkmated!")
+                                        if board_obj.is_stalemate():
+                                            print("Game ends in stalemate")
                                     except Exception as e:
                                         print(f"Engine play failed: {e}")
                                     finally:
@@ -201,6 +257,7 @@ def board():
 
                             t = threading.Thread(target=engine_play, daemon=True)
                             t.start()
+                    
                     else:
                         selected_square = None
                         selected_legal_moves = []
