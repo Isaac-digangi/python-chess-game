@@ -89,7 +89,7 @@ def board():
     board_obj = chess.Board()
 
     # --- Engine configuration (edit `STOCKFISH_PATH` to your binary) ---
-    STOCKFISH_PATH = r"C:\\Users\\ameri\\Downloads\\stockfish\\stockfish\\stockfish-windows-x86-64-avx2.exe"
+    STOCKFISH_PATH = r"\\stockfish\\stockfish-windows-x86-64-avx2.exe"  # unzip stockfish engine after download
     play_vs_engine = True
     engine_color = chess.BLACK  # engine plays as BLACK by default
 
