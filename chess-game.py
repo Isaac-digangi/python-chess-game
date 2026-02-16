@@ -6,6 +6,8 @@ SQUARE = 100
 WINDOW = SQUARE * 8
 WIDTH = 800
 HEIGHT = 800
+game_over = False
+winner = None
 
 
 # loads images for each chess piece and move marker. scales them to fit the board squares.
@@ -122,9 +124,9 @@ def draw_board(screen, board, images, legal_moves=None, board_obj=None):
 def board():
     global game_over, winner
     pygame.init()
-    screen = pygame.display.set_mode((1200, WINDOW))  # later set first WINDOW to 1200 for move list area
+    screen = pygame.display.set_mode((WINDOW, WINDOW))  # later set first WINDOW to 1200 for move list area
     pygame.display.set_caption("Chess game")
-    pygame.draw.line(screen, (255, 255, 255), (1000, 0), (1000, WINDOW), 3) #|| Draw a line to separate the board from the move list area (soon)
+    # pygame.draw.line(screen, (255, 255, 255), (1000, 0), (1000, WINDOW), 3) || Draw a line to separate the board from the move list area (soon)
 
 
     images = load_images()
@@ -180,21 +182,6 @@ def board():
                 if engine_thinking:
                     continue
 
-                if board_obj.is_checkmate():
-                    end_screen(screen, winner)
-                    pygame.display.flip()
-
-                    for event in pygame.event.get():
-                        if event.type == pygame.QUIT:
-                            running = False
-                        if event.type == pygame.MOUSEBUTTONDOWN:
-                            # reset game
-                            board_obj.reset()
-                            game_over = False
-                            winner = None
-                    continue
-
-
                 x, y = event.pos
                 col = x // SQUARE
                 row = y // SQUARE
@@ -234,18 +221,20 @@ def board():
                         board_obj.push(move)                # or board_obj.push(res.move)
                         board_state = board_from_chess(board_obj)
 
-                        # if board_obj.is_check():
-                        #     print(f"{'White' if board_obj.turn == chess.WHITE else 'Black'} is in check")
-                        #     king_square = board_obj.king(board_obj.turn)
-                        #     row = 7 - (king_square // 8)
-                        #     col = king_square % 8
-                        #     square_rect = 100 * col, 100 * row, 100, 100
-                        #     pygame.draw.rect(screen, (255, 0, 0), square_rect, 5)  # 5 = border thickness
+                        if board_obj.is_checkmate():
+                            print(f"{'White' if board_obj.turn == chess.WHITE else 'Black'} has been checkmated!")
+                            end_screen(screen, winner)
+                            pygame.display.flip()
 
-                        # if board_obj.is_checkmate():
-                        #     print(f"{'White' if board_obj.turn == chess.WHITE else 'Black'} has been checkmated!")
-                        # if board_obj.is_stalemate():
-                        #     print("Game ends in stalemate")
+                            for event in pygame.event.get():
+                                if event.type == pygame.QUIT:
+                                    running = False
+                                if event.type == pygame.MOUSEBUTTONDOWN:
+                                    # reset game
+                                    board_obj.reset()
+                                    game_over = False
+                                    winner = None
+                            continue
 
                         selected_square = None
                         selected_legal_moves = []
@@ -253,7 +242,8 @@ def board():
                         # Start engine reply in background if configured
                         if play_vs_engine and engine and board_obj.turn == engine_color:
                             def engine_play():
-                                nonlocal engine_thinking, board_state
+                                nonlocal engine_thinking, board_state, running
+                                global game_over, winner
                                 with engine_lock:
                                     engine_thinking = True
                                     try:
@@ -266,6 +256,18 @@ def board():
                                             print(f"{'White' if board_obj.turn == chess.WHITE else 'Black'} is in check")
                                         if board_obj.is_checkmate():
                                             print(f"{'White' if board_obj.turn == chess.WHITE else 'Black'} has been checkmated!")
+                                            end_screen(screen, winner)
+                                            pygame.display.flip()
+
+                                            for event in pygame.event.get():
+                                                if event.type == pygame.QUIT:
+                                                    running = False
+                                                if event.type == pygame.MOUSEBUTTONDOWN:
+                                                    # reset game
+                                                    board_obj.reset()
+                                                    game_over = False
+                                                    winner = None
+                                                continue
                                         if board_obj.is_stalemate():
                                             print("Game ends in stalemate")
                                     except Exception as e:
