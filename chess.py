@@ -6,7 +6,7 @@ WINDOW = SQUARE * 8
 # loads images for each chess piece and move marker. scales them to fit the board squares.
 
 def load_images(size=SQUARE):
-    base = os.path.join(os.path.dirname(__file__), '\python-chess-game-main\imgs')
+    base = os.path.join(os.path.dirname(__file__), 'imgs')
     codes = ['wp','wr','wn','wb','wq','wk','bp','br','bn','bb','bq','bk']
     imgs = {}
     for code in codes:
@@ -18,7 +18,7 @@ def load_images(size=SQUARE):
         else:
             imgs[code] = None
     # Load identifier image
-    identifier_path = 'C:\\Users\\ameri\\Downloads\\Python\\codes\\chess\\identifier.png'
+    identifier_path = os.path.join(base, 'identifier.png')
     if os.path.exists(identifier_path):
         imgs['identifier'] = pygame.image.load(identifier_path).convert_alpha()
         imgs['identifier'] = pygame.transform.smoothscale(imgs['identifier'], (size, size))
