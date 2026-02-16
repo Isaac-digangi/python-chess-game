@@ -1,4 +1,6 @@
 import pygame, os, chess
+import threading
+import chess.engine
 
 SQUARE = 100
 WINDOW = SQUARE * 8
@@ -77,14 +79,36 @@ def draw_board(screen, board, images, legal_moves=None):
 
 def board():
     pygame.init()
-    screen = pygame.display.set_mode((WINDOW, WINDOW))  # later set first WINDOW to 1200 for move list area
+    screen = pygame.display.set_mode((1200, WINDOW))  # later set first WINDOW to 1200 for move list area
     pygame.display.set_caption("Chess Board with Images")
-    # pygame.draw.line(screen, (255, 255, 255), (1000, 0), (1000, WINDOW), 3) || Draw a line to separate the board from the move list area (soon)
+    pygame.draw.line(screen, (255, 255, 255), (1000, 0), (1000, WINDOW), 3) #|| Draw a line to separate the board from the move list area (soon)
 
 
     images = load_images()
     # use python-chess Board for legal-move logic
     board_obj = chess.Board()
+
+    # --- Engine configuration (edit `STOCKFISH_PATH` to your binary) ---
+    STOCKFISH_PATH = r"C:\\Users\\ameri\\Downloads\\stockfish\\stockfish\\stockfish-windows-x86-64-avx2.exe"
+    play_vs_engine = True
+    engine_color = chess.BLACK  # engine plays as BLACK by default
+
+    engine = None
+    engine_lock = threading.Lock()
+    engine_thinking = False
+    is_checkmate = False
+    is_stalemate = False
+    is_check = False
+    is_insufficient_material = False
+    is_threefold_repetition = False
+    
+
+    if play_vs_engine:
+        try:
+            engine = chess.engine.SimpleEngine.popen_uci(STOCKFISH_PATH)
+        except Exception as e:
+            print(f"Failed to start engine: {e}")
+            engine = None
 
     def board_from_chess(b):
         # build 8x8 board_state from python-chess Board
@@ -102,6 +126,7 @@ def board():
 
     board_state = board_from_chess(board_obj)
     selected_legal_moves = []  # Track the current selection's legal moves
+    selected_square = None
 
     clock = pygame.time.Clock()
     running = True
@@ -114,6 +139,10 @@ def board():
                 running = False
 
             if event.type == pygame.MOUSEBUTTONDOWN:
+                # Ignore clicks while engine is thinking
+                if engine_thinking:
+                    continue
+
                 x, y = event.pos
                 col = x // SQUARE
                 row = y // SQUARE
@@ -123,24 +152,58 @@ def board():
                 sq = chess.square(file, rank)
 
                 piece = board_obj.piece_at(sq)
-                if not piece:
-                    print(f"Clicked empty square: {chess.square_name(sq)}")
-                    selected_legal_moves = []
-                else:
-                    # print(f"Clicked {piece.symbol()} on {chess.square_name(sq)}")
-                    # get legal moves from this square
-                    legal = [m for m in board_obj.legal_moves if m.from_square == sq]
-                    selected_legal_moves = legal
-                    if not legal:
-                        print("No legal moves for this piece.")
+                # First click: select a friendly piece
+                if selected_square is None:
+                    if piece and piece.color == board_obj.turn:
+                        selected_square = sq
+                        legal = [m for m in board_obj.legal_moves if m.from_square == sq]
+                        selected_legal_moves = legal
+                        if not legal:
+                            print("No legal moves for this piece.")
+                        # else:
+                        #     print("Legal moves:")
+                        #     for m in legal:
+                        #         try:
+                        #             san = board_obj.san(m)
+                        #         except Exception:
+                        #             san = ""
+                        #         print(f"  {san}")
                     else:
-                        print("Legal moves:")
-                        for m in legal:
-                            try:
-                                san = board_obj.san(m)
-                            except Exception:
-                                san = ""
-                            print(f"  {san}")
+                        selected_legal_moves = []
+                else:
+                    # Second click: attempt move
+                    move = None
+                    for m in board_obj.legal_moves:
+                        if m.from_square == selected_square and m.to_square == sq:
+                            move = m
+                            break
+
+                    if move:
+                        board_obj.push(move)
+                        board_state = board_from_chess(board_obj)
+                        selected_square = None
+                        selected_legal_moves = []
+
+                        # Start engine reply in background if configured
+                        if play_vs_engine and engine and board_obj.turn == engine_color:
+                            def engine_play():
+                                nonlocal engine_thinking, board_state
+                                with engine_lock:
+                                    engine_thinking = True
+                                    try:
+                                        res = engine.play(board_obj, chess.engine.Limit(time=0.3))
+                                        board_obj.push(res.move)
+                                        board_state = board_from_chess(board_obj)
+                                    except Exception as e:
+                                        print(f"Engine play failed: {e}")
+                                    finally:
+                                        engine_thinking = False
+
+                            t = threading.Thread(target=engine_play, daemon=True)
+                            t.start()
+                    else:
+                        selected_square = None
+                        selected_legal_moves = []
 
         draw_board(screen, board_state, images, selected_legal_moves)
         pygame.display.flip()
