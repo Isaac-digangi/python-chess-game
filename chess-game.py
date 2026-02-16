@@ -1,9 +1,14 @@
 import pygame, os, chess
-import threading
+import threading, time as t
 import chess.engine
 
 SQUARE = 100
 WINDOW = SQUARE * 8
+WIDTH = 800
+HEIGHT = 800
+game_over = False
+winner = None
+
 
 # loads images for each chess piece and move marker. scales them to fit the board squares.
 
@@ -43,22 +48,19 @@ def starting_board():
         ['wr','wn','wb','wq','wk','wb','wn','wr']
     ]
 
-def get_king_squares(board: chess.Board):
-    def info(sq):
-        if sq is None:
-            return None
-        name = chess.square_name(sq)        # e.g. "e1"
-        file = chess.square_file(sq)        # 0..7 (a..h)
-        rank = chess.square_rank(sq)        # 0..7 (1..8)
-        row = 7 - rank                      # draw row (0 at top)
-        col = file                          # draw col (0 at left)
-        return {"sq_index": sq, "name": name, "file": file, "rank": rank, "row": row, "col": col}
+def end_screen(screen, winner):
 
-    return {"white": info(board.king(chess.WHITE)), "black": info(board.king(chess.BLACK))}
+    screen.fill((0, 0, 0))
+    font = pygame.font.SysFont(None, 72)
+    text = font.render(f"{winner} has been checkmated!", True, (255, 0, 0))
+    rect = text.get_rect(center=(WIDTH // 2, HEIGHT // 2))
+    screen.blit(text, rect)
 
-# Example:
-b = chess.Board()
-print(get_king_squares(b))
+    small_font = pygame.font.SysFont(None, 36)
+    msg = small_font.render("Click to restart", True, (200, 200, 200))
+    msg_rect = msg.get_rect(center=(WIDTH // 2, HEIGHT // 2 + 80))
+    screen.blit(msg, msg_rect)
+
 
 # draws the chessboard and places the images of the pieces in their squares. 
 # It also highlights the legal moves for a selected piece using an marker image.
@@ -178,6 +180,21 @@ def board():
                 # Ignore clicks while engine is thinking
                 if engine_thinking:
                     continue
+
+                if game_over:
+                    end_screen(screen, winner)
+                    pygame.display.flip()
+
+                    for event in pygame.event.get():
+                        if event.type == pygame.QUIT:
+                            running = False
+                        if event.type == pygame.MOUSEBUTTONDOWN:
+                            # reset game
+                            board_obj.reset()
+                            game_over = False
+                            winner = None
+                    continue
+
 
                 x, y = event.pos
                 col = x // SQUARE
