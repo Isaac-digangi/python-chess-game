@@ -6,8 +6,6 @@ SQUARE = 100
 WINDOW = SQUARE * 8
 WIDTH = 800
 HEIGHT = 800
-game_over = False
-winner = None
 
 
 # loads images for each chess piece and move marker. scales them to fit the board squares.
@@ -122,9 +120,10 @@ def draw_board(screen, board, images, legal_moves=None, board_obj=None):
 # sets up the Pygame window, handles events, and updates the display. It uses the python-chess library to manage the game state and determine legal moves.
 
 def board():
+    global game_over, winner
     pygame.init()
     screen = pygame.display.set_mode((1200, WINDOW))  # later set first WINDOW to 1200 for move list area
-    pygame.display.set_caption("Chess Board with Images")
+    pygame.display.set_caption("Chess game")
     pygame.draw.line(screen, (255, 255, 255), (1000, 0), (1000, WINDOW), 3) #|| Draw a line to separate the board from the move list area (soon)
 
 
@@ -181,7 +180,7 @@ def board():
                 if engine_thinking:
                     continue
 
-                if game_over:
+                if board_obj.is_checkmate():
                     end_screen(screen, winner)
                     pygame.display.flip()
 
