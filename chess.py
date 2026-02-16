@@ -6,7 +6,7 @@ WINDOW = SQUARE * 8
 # loads images for each chess piece and move marker. scales them to fit the board squares.
 
 def load_images(size=SQUARE):
-    base = os.path.join(os.path.dirname(__file__), 'C:\\Users\\ameri\\Downloads\\Python\\codes\\chess')
+    base = os.path.join(os.path.dirname(__file__), '\imgs')
     codes = ['wp','wr','wn','wb','wq','wk','bp','br','bn','bb','bq','bk']
     imgs = {}
     for code in codes:
