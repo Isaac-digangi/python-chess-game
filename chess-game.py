@@ -72,7 +72,7 @@ def draw_board(screen, board, images, legal_moves=None, board_obj=None):
     king_in_check = False
     king_row = king_col = None
 
-    if board_obj.is_check():
+    if board_obj is not None and board_obj.is_check():
         king_sq = board_obj.king(board_obj.turn)
         king_rank = chess.square_rank(king_sq)
         king_file = chess.square_file(king_sq)
@@ -80,6 +80,7 @@ def draw_board(screen, board, images, legal_moves=None, board_obj=None):
         king_col = king_file
         king_in_check = True
     # ----------------------------
+
 
     for row in range(8):
         for col in range(8):
@@ -90,8 +91,9 @@ def draw_board(screen, board, images, legal_moves=None, board_obj=None):
             # --- HIGHLIGHT KING IN CHECK ---
             if king_in_check and row == king_row and col == king_col:
                 overlay = pygame.Surface((SQUARE, SQUARE), pygame.SRCALPHA)
-                overlay.fill((255, 0, 0, 90))  # translucent red
+                overlay.fill((255, 0, 0, 90))
                 screen.blit(overlay, (col * SQUARE, row * SQUARE))
+
             # --------------------------------
 
             piece = board[row][col]
@@ -216,18 +218,18 @@ def board():
                         board_obj.push(move)                # or board_obj.push(res.move)
                         board_state = board_from_chess(board_obj)
 
-                        if board_obj.is_check():
-                            print(f"{'White' if board_obj.turn == chess.WHITE else 'Black'} is in check")
-                            king_square = board_obj.king(board_obj.turn)
-                            row = 7 - (king_square // 8)
-                            col = king_square % 8
-                            square_rect = 100 * col, 100 * row, 100, 100
-                            pygame.draw.rect(screen, (255, 0, 0), square_rect, 5)  # 5 = border thickness
+                        # if board_obj.is_check():
+                        #     print(f"{'White' if board_obj.turn == chess.WHITE else 'Black'} is in check")
+                        #     king_square = board_obj.king(board_obj.turn)
+                        #     row = 7 - (king_square // 8)
+                        #     col = king_square % 8
+                        #     square_rect = 100 * col, 100 * row, 100, 100
+                        #     pygame.draw.rect(screen, (255, 0, 0), square_rect, 5)  # 5 = border thickness
 
-                        if board_obj.is_checkmate():
-                            print(f"{'White' if board_obj.turn == chess.WHITE else 'Black'} has been checkmated!")
-                        if board_obj.is_stalemate():
-                            print("Game ends in stalemate")
+                        # if board_obj.is_checkmate():
+                        #     print(f"{'White' if board_obj.turn == chess.WHITE else 'Black'} has been checkmated!")
+                        # if board_obj.is_stalemate():
+                        #     print("Game ends in stalemate")
 
                         selected_square = None
                         selected_legal_moves = []
@@ -262,7 +264,7 @@ def board():
                         selected_square = None
                         selected_legal_moves = []
 
-        draw_board(screen, board_state, images, selected_legal_moves)
+        draw_board(screen, board_state, images, selected_legal_moves, board_obj)
         pygame.display.flip()
         clock.tick(30)
 
