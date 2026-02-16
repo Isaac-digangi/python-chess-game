@@ -1,5 +1,5 @@
 import pygame, os, chess
-import threading, time as t
+import threading, time
 import chess.engine
 
 SQUARE = 100
@@ -57,9 +57,10 @@ def end_screen(screen, winner):
     screen.blit(text, rect)
 
     small_font = pygame.font.SysFont(None, 36)
-    msg = small_font.render("Click to restart", True, (200, 200, 200))
+    msg = small_font.render("Click screen for a rematch", True, (200, 200, 200))
     msg_rect = msg.get_rect(center=(WIDTH // 2, HEIGHT // 2 + 80))
     screen.blit(msg, msg_rect)
+    # time.sleep(5)
 
 
 # draws the chessboard and places the images of the pieces in their squares. 
@@ -173,6 +174,29 @@ def board():
     # main loop handles user input, allowing players to click on pieces and view their legal moves.
 
     while running:
+        screen.fill((0, 0, 0))
+
+        # ---------------- GAME OVER SCREEN ----------------
+        if game_over:
+            end_screen(screen, winner)
+            pygame.display.flip()
+            
+            for event in pygame.event.get():
+                if event.type == pygame.QUIT:
+                    running = False
+
+                if event.type == pygame.MOUSEBUTTONDOWN:
+                    board_obj.reset()
+                    board_state = board_from_chess(board_obj)
+                    selected_square = None
+                    selected_legal_moves = None
+                    game_over = False
+                    winner = None
+
+            continue   # <-- IMPORTANT: prevents board from drawing
+        # ---------------------------------------------------
+
+        # ---------------- NORMAL GAME LOOP -----------------
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
                 running = False
@@ -185,30 +209,23 @@ def board():
                 x, y = event.pos
                 col = x // SQUARE
                 row = y // SQUARE
-                # map (row,col) to python-chess square
+
                 file = col
                 rank = 7 - row
                 sq = chess.square(file, rank)
 
                 piece = board_obj.piece_at(sq)
+
                 # First click: select a friendly piece
                 if selected_square is None:
                     if piece and piece.color == board_obj.turn:
                         selected_square = sq
-                        legal = [m for m in board_obj.legal_moves if m.from_square == sq]
-                        selected_legal_moves = legal
-                        if not legal:
-                            print("No legal moves for this piece.")
-                        # else:
-                        #     print("Legal moves:")
-                        #     for m in legal:
-                        #         try:
-                        #             san = board_obj.san(m)
-                        #         except Exception:
-                        #             san = ""
-                        #         print(f"  {san}")
+                        selected_legal_moves = [
+                            m for m in board_obj.legal_moves if m.from_square == sq
+                        ]
                     else:
                         selected_legal_moves = []
+
                 else:
                     # Second click: attempt move
                     move = None
@@ -218,58 +235,38 @@ def board():
                             break
 
                     if move:
-                        board_obj.push(move)                # or board_obj.push(res.move)
+                        board_obj.push(move)
                         board_state = board_from_chess(board_obj)
 
+                        # CHECKMATE DETECTION
                         if board_obj.is_checkmate():
-                            print(f"{'White' if board_obj.turn == chess.WHITE else 'Black'} has been checkmated!")
-                            end_screen(screen, winner)
-                            pygame.display.flip()
-
-                            for event in pygame.event.get():
-                                if event.type == pygame.QUIT:
-                                    running = False
-                                if event.type == pygame.MOUSEBUTTONDOWN:
-                                    # reset game
-                                    board_obj.reset()
-                                    game_over = False
-                                    winner = None
+                            winner = "White" if board_obj.turn == chess.WHITE else "Black"
+                            time.sleep(2)
+                            game_over = True
                             continue
 
                         selected_square = None
                         selected_legal_moves = []
 
-                        # Start engine reply in background if configured
+                        # ENGINE MOVE
                         if play_vs_engine and engine and board_obj.turn == engine_color:
                             def engine_play():
                                 nonlocal engine_thinking, board_state, running
                                 global game_over, winner
+
                                 with engine_lock:
                                     engine_thinking = True
                                     try:
-                                        res = engine.play(board_obj, chess.engine.Limit(time=0.3))
+                                        res = engine.play(board_obj, chess.engine.Limit(time=0.5))
                                         board_obj.push(res.move)
                                         board_state = board_from_chess(board_obj)
 
-                                        # report check after engine move
-                                        if board_obj.is_check():
-                                            print(f"{'White' if board_obj.turn == chess.WHITE else 'Black'} is in check")
                                         if board_obj.is_checkmate():
-                                            print(f"{'White' if board_obj.turn == chess.WHITE else 'Black'} has been checkmated!")
-                                            end_screen(screen, winner)
-                                            pygame.display.flip()
+                                            winner = "White" if board_obj.turn == chess.WHITE else "Black"
+                                            time.sleep(2)
+                                            game_over = True
+                                            return
 
-                                            for event in pygame.event.get():
-                                                if event.type == pygame.QUIT:
-                                                    running = False
-                                                if event.type == pygame.MOUSEBUTTONDOWN:
-                                                    # reset game
-                                                    board_obj.reset()
-                                                    game_over = False
-                                                    winner = None
-                                                continue
-                                        if board_obj.is_stalemate():
-                                            print("Game ends in stalemate")
                                     except Exception as e:
                                         print(f"Engine play failed: {e}")
                                     finally:
@@ -277,14 +274,16 @@ def board():
 
                             t = threading.Thread(target=engine_play, daemon=True)
                             t.start()
-                    
+
                     else:
                         selected_square = None
                         selected_legal_moves = []
 
+        # DRAW BOARD
         draw_board(screen, board_state, images, selected_legal_moves, board_obj)
         pygame.display.flip()
         clock.tick(30)
+
 
     pygame.quit()
 
