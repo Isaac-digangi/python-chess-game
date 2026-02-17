@@ -57,7 +57,7 @@ def end_screen(screen, winner):
     screen.blit(text, rect)
 
     small_font = pygame.font.SysFont(None, 36)
-    msg = small_font.render("Click screen for a rematch", True, (200, 200, 200))
+    msg = small_font.render("Click screen for a rematch or close this window to exit", True, (200, 200, 200))
     msg_rect = msg.get_rect(center=(WIDTH // 2, HEIGHT // 2 + 80))
     screen.blit(msg, msg_rect)
     # time.sleep(5)
@@ -129,12 +129,11 @@ def board():
     pygame.display.set_caption("Chess game")
     # pygame.draw.line(screen, (255, 255, 255), (1000, 0), (1000, WINDOW), 3) || Draw a line to separate the board from the move list area (soon)
 
-
     images = load_images()
     # use python-chess Board for legal-move logic
     board_obj = chess.Board()
 
-    # --- Engine configuration (edit `STOCKFISH_PATH` to your binary) ---
+    # --- Engine configuration (edit `STOCKFISH_PATH` to your saved engine path) ---
     STOCKFISH_PATH = r"C:\\Users\\ameri\\Downloads\\stockfish\\stockfish\\stockfish-windows-x86-64-avx2.exe"
     play_vs_engine = True
     engine_color = chess.BLACK  # engine plays as BLACK by default
@@ -146,9 +145,11 @@ def board():
     if play_vs_engine:
         try:
             engine = chess.engine.SimpleEngine.popen_uci(STOCKFISH_PATH)
+            engine.configure({"Skill Level": 0})
         except Exception as e:
-            print(f"Failed to start engine: {e}")
+            print("Could not load engine:", e)
             engine = None
+
 
     def board_from_chess(b):
         # build 8x8 board_state from python-chess Board
@@ -170,7 +171,7 @@ def board():
 
     clock = pygame.time.Clock()
     running = True
-
+   
     # main loop handles user input, allowing players to click on pieces and view their legal moves.
 
     while running:
@@ -193,7 +194,7 @@ def board():
                     game_over = False
                     winner = None
 
-            continue   # <-- IMPORTANT: prevents board from drawing
+            continue
         # ---------------------------------------------------
 
         # ---------------- NORMAL GAME LOOP -----------------
