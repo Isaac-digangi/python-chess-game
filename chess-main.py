@@ -132,6 +132,9 @@ try:
         images = load_images()
         board_obj = chess.Board()
 
+        move_count = 1
+        pending_white_move = None
+
         # --- PGN ADDITION: Create PGN game ---
         game = chess.pgn.Game()
         game.headers["Event"] = "Python Chess Game"
@@ -244,13 +247,16 @@ try:
                                 break
 
                         if move:
-                            san_str = board_obj.san(move)  # get SAN before push
+
+                            san_str = board_obj.san(move)
 
                             board_obj.push(move)
                             board_state = board_from_chess(board_obj)
 
                             node = node.add_variation(move)
-                            print(f"White: {san_str}")
+
+                            # --- STORE WHITE MOVE ---
+                            pending_white_move = san_str
                             # ------------------------------------------
 
                             # CHECKMATE DETECTION
@@ -272,7 +278,7 @@ try:
                             # ENGINE MOVE
                             if play_vs_engine and engine and board_obj.turn == engine_color:
                                 def engine_play():
-                                    nonlocal engine_thinking, board_state, running, node
+                                    nonlocal engine_thinking, board_state, running, node, move_count, pending_white_move
                                     global game_over, winner
 
                                     with engine_lock:
@@ -285,11 +291,14 @@ try:
                                             board_obj.push(res.move)
                                             board_state = board_from_chess(board_obj)
 
-                                            # --- PGN ---
                                             node = node.add_variation(res.move)
 
-                                            # --- PRINT ENGINE MOVE ---
-                                            print(f"Black: {san_str}")
+                                            # --- PRINT BOTH MOVES TOGETHER ---
+                                            print(f"{move_count}. {pending_white_move} {san_str}")
+
+                                            move_count += 1
+                                            pending_white_move = None
+
 
                                             if board_obj.is_checkmate():
                                                 winner = "White" if board_obj.turn == chess.WHITE else "Black"
