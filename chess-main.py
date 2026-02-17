@@ -1,8 +1,7 @@
 try:
     import pygame, os, chess
     import threading, time
-    import chess.engine, 
-    # import chess.pgn  (for later)
+    import chess.engine, chess.pgn
 
     SQUARE = 100
     WINDOW = SQUARE * 8
@@ -127,19 +126,24 @@ try:
     def board():
         global game_over, winner
         pygame.init()
-        screen = pygame.display.set_mode((WINDOW, WINDOW))  # later set first WINDOW to 1200 for move list area
+        screen = pygame.display.set_mode((WINDOW, WINDOW))
         pygame.display.set_caption("Chess game")
-        # pygame.draw.line(screen, (255, 255, 255), (1000, 0), (1000, WINDOW), 3) || Draw a line to separate the board from the move list area (soon)
-
 
         images = load_images()
-        # use python-chess Board for legal-move logic
         board_obj = chess.Board()
 
-        # --- Engine configuration (edit `STOCKFISH_PATH` to your binary) ---
+        # --- PGN ADDITION: Create PGN game ---
+        game = chess.pgn.Game()
+        game.headers["Event"] = "Python Chess Game"
+        game.headers["White"] = "Player"
+        game.headers["Black"] = "Engine"  # or "Player 2" if PvP
+        node = game
+        # -------------------------------------
+
+        # --- Engine configuration ---
         STOCKFISH_PATH = r"C:\\Users\\ameri\\Downloads\\stockfish\\stockfish\\stockfish-windows-x86-64-avx2.exe"
         play_vs_engine = True
-        engine_color = chess.BLACK  # engine plays as BLACK by default
+        engine_color = chess.BLACK
 
         engine = None
         engine_lock = threading.Lock()
@@ -153,14 +157,12 @@ try:
                 print("Could not load engine:", e)
                 engine = None
 
-
         def board_from_chess(b):
-            # build 8x8 board_state from python-chess Board
             state = [[None for _ in range(8)] for _ in range(8)]
             for sq, piece in b.piece_map().items():
-                file = chess.square_file(sq)  # 0..7
-                rank = chess.square_rank(sq)  # 0..7 where 0 is rank1
-                row = 7 - rank  # convert to drawing row (0 at top)
+                file = chess.square_file(sq)
+                rank = chess.square_rank(sq)
+                row = 7 - rank
                 col = file
                 color = 'w' if piece.color == chess.WHITE else 'b'
                 p = piece.symbol().lower()
@@ -169,13 +171,11 @@ try:
             return state
 
         board_state = board_from_chess(board_obj)
-        selected_legal_moves = []  # Track the current selection's legal moves
+        selected_legal_moves = []
         selected_square = None
 
         clock = pygame.time.Clock()
         running = True
-
-        # main loop handles user input, allowing players to click on pieces and view their legal moves.
 
         while running:
             screen.fill((0, 0, 0))
@@ -184,12 +184,13 @@ try:
             if game_over:
                 end_screen(screen, winner)
                 pygame.display.flip()
-                
+
                 for event in pygame.event.get():
                     if event.type == pygame.QUIT:
                         running = False
 
                     if event.type == pygame.MOUSEBUTTONDOWN:
+                        # Reset everything
                         board_obj.reset()
                         board_state = board_from_chess(board_obj)
                         selected_square = None
@@ -197,7 +198,12 @@ try:
                         game_over = False
                         winner = None
 
-                continue   # <-- IMPORTANT: prevents board from drawing
+                        # --- PGN ADDITION: Reset PGN for new game ---
+                        game = chess.pgn.Game()
+                        node = game
+                        # --------------------------------------------
+
+                continue
             # ---------------------------------------------------
 
             # ---------------- NORMAL GAME LOOP -----------------
@@ -206,7 +212,6 @@ try:
                     running = False
 
                 if event.type == pygame.MOUSEBUTTONDOWN:
-                    # Ignore clicks while engine is thinking
                     if engine_thinking:
                         continue
 
@@ -239,14 +244,26 @@ try:
                                 break
 
                         if move:
+                            san_str = board_obj.san(move)  # get SAN before push
+
                             board_obj.push(move)
                             board_state = board_from_chess(board_obj)
+
+                            node = node.add_variation(move)
+                            print(f"White: {san_str}")
+                            # ------------------------------------------
 
                             # CHECKMATE DETECTION
                             if board_obj.is_checkmate():
                                 winner = "White" if board_obj.turn == chess.WHITE else "Black"
                                 time.sleep(2)
                                 game_over = True
+
+                                # --- PGN ADDITION: Save PGN on game end ---
+                                with open("game.pgn", "w") as f:
+                                    print(game, file=f)
+                                # ------------------------------------------
+
                                 continue
 
                             selected_square = None
@@ -255,20 +272,35 @@ try:
                             # ENGINE MOVE
                             if play_vs_engine and engine and board_obj.turn == engine_color:
                                 def engine_play():
-                                    nonlocal engine_thinking, board_state, running
+                                    nonlocal engine_thinking, board_state, running, node
                                     global game_over, winner
 
                                     with engine_lock:
                                         engine_thinking = True
                                         try:
                                             res = engine.play(board_obj, chess.engine.Limit(time=0.5))
+                                            # --- GET SAN BEFORE PUSH ---
+                                            san_str = board_obj.san(res.move)
+
                                             board_obj.push(res.move)
                                             board_state = board_from_chess(board_obj)
+
+                                            # --- PGN ---
+                                            node = node.add_variation(res.move)
+
+                                            # --- PRINT ENGINE MOVE ---
+                                            print(f"Black: {san_str}")
 
                                             if board_obj.is_checkmate():
                                                 winner = "White" if board_obj.turn == chess.WHITE else "Black"
                                                 time.sleep(2)
                                                 game_over = True
+
+                                                # --- PGN ADDITION: Save PGN ---
+                                                with open("game.pgn", "w") as f:
+                                                    print(game, file=f)
+                                                # ------------------------------
+
                                                 return
 
                                         except Exception as e:
@@ -287,7 +319,6 @@ try:
             draw_board(screen, board_state, images, selected_legal_moves, board_obj)
             pygame.display.flip()
             clock.tick(30)
-
 
         pygame.quit()
 
