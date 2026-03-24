@@ -1,0 +1,326 @@
+import pygame, os, chess
+import threading, time
+import chess.engine, chess.pgn
+# import chess.polyglot
+
+SQUARE = 100
+WINDOW = SQUARE * 8
+WIDTH = 800
+HEIGHT = 800
+game_over = False
+winner = None
+
+
+# loads images for each chess piece and move marker. scales them to fit the board squares.
+
+def load_images(size=SQUARE):
+    base = os.path.join(os.path.dirname(__file__), 'imgs')
+    codes = ['wp','wr','wn','wb','wq','wk','bp','br','bn','bb','bq','bk']
+    imgs = {}
+    for code in codes:
+        path = os.path.join(base, f"{code}.png")
+        if os.path.exists(path):
+            img = pygame.image.load(path).convert_alpha()
+            img = pygame.transform.smoothscale(img, (size, size))
+            imgs[code] = img
+        else:
+            imgs[code] = None
+    # Load identifier image
+    identifier_path = os.path.join(base, 'identifier.png')
+    if os.path.exists(identifier_path):
+        imgs['identifier'] = pygame.image.load(identifier_path).convert_alpha()
+        imgs['identifier'] = pygame.transform.smoothscale(imgs['identifier'], (size, size))
+    else:
+        imgs['identifier'] = None
+    return imgs
+
+#  returns the starting pos of the pieces and board.
+
+def starting_board():
+    # Standard starting position using piece codes
+    return [
+        ['br','bn','bb','bq','bk','bb','bn','br'],
+        ['bp']*8,
+        [None]*8,
+        [None]*8,
+        [None]*8,
+        [None]*8,
+        ['wp']*8,
+        ['wr','wn','wb','wq','wk','wb','wn','wr']
+    ]
+
+def end_screen(screen, winner):
+
+    screen.fill((0, 0, 0))
+    font = pygame.font.SysFont(None, 72)
+    text = font.render(f"{winner} has been checkmated!", True, (255, 0, 0))
+    rect = text.get_rect(center=(WIDTH // 2, HEIGHT // 2))
+    screen.blit(text, rect)
+
+    small_font = pygame.font.SysFont(None, 36)
+    msg = small_font.render("Click screen for a rematch or close this window to exit", True, (200, 200, 200))
+    msg_rect = msg.get_rect(center=(WIDTH // 2, HEIGHT // 2 + 80))
+    screen.blit(msg, msg_rect)
+    # time.sleep(5)
+
+
+# draws the chessboard and places the images of the pieces in their squares. 
+# It also highlights the legal moves for a selected piece using an marker image.
+
+def draw_board(screen, board, images, legal_moves=None, board_obj=None):
+    white = (255, 213, 153)
+    black = (177, 110, 65)
+    font = pygame.font.SysFont(None, 28)
+
+    # --- KING IN CHECK LOGIC ---
+    king_in_check = False
+    king_row = king_col = None
+
+    if board_obj is not None and board_obj.is_check():
+        king_sq = board_obj.king(board_obj.turn)
+        king_rank = chess.square_rank(king_sq)
+        king_file = chess.square_file(king_sq)
+        king_row = 7 - king_rank
+        king_col = king_file
+        king_in_check = True
+    # ----------------------------
+
+
+    for row in range(8):
+        for col in range(8):
+            color = white if (row + col) % 2 == 0 else black
+            rect = (col * SQUARE, row * SQUARE, SQUARE, SQUARE)
+            pygame.draw.rect(screen, color, rect)
+
+            # --- HIGHLIGHT KING IN CHECK ---
+            if king_in_check and row == king_row and col == king_col:
+                overlay = pygame.Surface((SQUARE, SQUARE), pygame.SRCALPHA)
+                overlay.fill((255, 0, 0, 90))
+                screen.blit(overlay, (col * SQUARE, row * SQUARE))
+
+            # --------------------------------
+
+            piece = board[row][col]
+            if piece:
+                img = images.get(piece)
+                if img:
+                    screen.blit(img, (col * SQUARE, row * SQUARE))
+                else:
+                    lbl = font.render(piece, True, (255,0,0))
+                    screen.blit(lbl, (col * SQUARE + 8, row * SQUARE + 8))
+
+            # Draw identifier on legal move squares
+            if legal_moves and images.get('identifier'):
+                for move in legal_moves:
+                    to_sq = move.to_square
+                    to_file = chess.square_file(to_sq)
+                    to_rank = chess.square_rank(to_sq)
+                    to_row = 7 - to_rank
+                    to_col = to_file
+                    if to_row == row and to_col == col:
+                        screen.blit(images['identifier'], (col * SQUARE, row * SQUARE))
+
+def game():
+        global game_over, winner
+        pygame.init()
+        screen = pygame.display.set_mode((WINDOW, WINDOW))
+        pygame.display.set_caption("Chess game")
+
+        images = load_images()
+        board_obj = chess.Board()
+
+        move_count = 1
+        pending_white_move = None
+
+        # create PGN
+        game = chess.pgn.Game()
+        game.headers["Event"] = "Python Chess Game"
+        game.headers["White"] = "Player"
+        game.headers["Black"] = "Engine"
+        node = game
+
+        # Engine path
+        STOCKFISH_PATH = r"C:\\Users\\ameri\\Downloads\\stockfish\\stockfish\\stockfish-windows-x86-64-avx2.exe"
+        play_vs_engine = True
+        engine_color = chess.BLACK
+
+        engine = None
+        engine_lock = threading.Lock()
+        engine_thinking = False
+
+        if play_vs_engine:
+            try:
+                engine = chess.engine.SimpleEngine.popen_uci(STOCKFISH_PATH)
+                engine.configure({"Skill Level": 0})
+            except Exception as e:
+                print("Could not load engine:", e)
+                engine = None
+
+        def board_from_chess(b):
+            state = [[None for _ in range(8)] for _ in range(8)]
+            for sq, piece in b.piece_map().items():
+                file = chess.square_file(sq)
+                rank = chess.square_rank(sq)
+                row = 7 - rank
+                col = file
+                color = 'w' if piece.color == chess.WHITE else 'b'
+                p = piece.symbol().lower()
+                code = color + {'p':'p','r':'r','n':'n','b':'b','q':'q','k':'k'}[p]
+                state[row][col] = code
+            return state
+
+        board_state = board_from_chess(board_obj)
+        selected_legal_moves = []
+        selected_square = None
+
+        clock = pygame.time.Clock()
+        running = True
+
+        while running:
+            screen.fill((0, 0, 0))
+
+            # End screen
+            if game_over:
+                end_screen(screen, winner)
+                pygame.display.flip()
+
+                for event in pygame.event.get():
+                    if event.type == pygame.QUIT:
+                        running = False
+
+                    if event.type == pygame.MOUSEBUTTONDOWN:
+                        # Reset everything
+                        board_obj.reset()
+                        board_state = board_from_chess(board_obj)
+                        selected_square = None
+                        selected_legal_moves = None
+                        game_over = False
+                        winner = None
+
+                        # reset PGN
+                        game = chess.pgn.Game()
+                        node = game
+
+                continue
+
+            # Main loop
+            for event in pygame.event.get():
+                if event.type == pygame.QUIT:
+                    running = False
+
+                if event.type == pygame.MOUSEBUTTONDOWN:
+                    if engine_thinking:
+                        continue
+
+                    x, y = event.pos
+                    col = x // SQUARE
+                    row = y // SQUARE
+
+                    file = col
+                    rank = 7 - row
+                    sq = chess.square(file, rank)
+
+                    piece = board_obj.piece_at(sq)
+
+                    # First click: select a piece
+                    if selected_square is None:
+                        if piece and piece.color == board_obj.turn:
+                            selected_square = sq
+                            selected_legal_moves = [
+                                m for m in board_obj.legal_moves if m.from_square == sq
+                            ]
+                        else:
+                            selected_legal_moves = []
+
+                    else:
+                        # Second click: attempt move
+                        move = None
+                        for m in board_obj.legal_moves:
+                            if m.from_square == selected_square and m.to_square == sq:
+                                move = m
+                                break
+
+                        if move:
+
+                            san_str = board_obj.san(move)
+
+                            board_obj.push(move)
+                            board_state = board_from_chess(board_obj)
+
+                            node = node.add_variation(move)
+
+                            # Store white's move
+                            pending_white_move = san_str
+
+                            # looks for checkmate
+                            if board_obj.is_checkmate():
+                                winner = "White" if board_obj.turn == chess.WHITE else "Black"
+                                time.sleep(2)
+                                game_over = True
+
+                                # save PGN file after game
+                                with open("game.pgn", "w") as f:
+                                    print(game, file=f)
+
+                                continue
+
+                            selected_square = None
+                            selected_legal_moves = []
+
+                            # Engine move
+                            if play_vs_engine and engine and board_obj.turn == engine_color:
+                                def engine_play():
+                                    nonlocal engine_thinking, board_state, running, node, move_count, pending_white_move
+                                    global game_over, winner
+
+                                    with engine_lock:
+                                        engine_thinking = True
+                                        try:
+                                            res = engine.play(board_obj, chess.engine.Limit(time=0.5))
+                                            # --- GET SAN BEFORE PUSH ---
+                                            san_str = board_obj.san(res.move)
+
+                                            board_obj.push(res.move)
+                                            board_state = board_from_chess(board_obj)
+
+                                            node = node.add_variation(res.move)
+
+                                            # Print moves in a readable formate
+                                            print(f"{move_count}. {pending_white_move} {san_str}")
+
+                                            move_count += 1
+                                            pending_white_move = None
+
+
+                                            if board_obj.is_checkmate():
+                                                winner = "White" if board_obj.turn == chess.WHITE else "Black"
+                                                time.sleep(2)
+                                                game_over = True
+
+                                                # save PGN file
+                                                with open("game.pgn", "w") as f:
+                                                    print(game, file=f)
+
+                                                return
+
+                                        except Exception as e:
+                                            print(f"Engine play failed: {e}")
+                                        finally:
+                                            engine_thinking = False
+
+                                t = threading.Thread(target=engine_play, daemon=True)
+                                t.start()
+
+                        else:
+                            selected_square = None
+                            selected_legal_moves = []
+
+            # draw the board
+            draw_board(screen, board_state, images, selected_legal_moves, board_obj)
+            pygame.display.flip()
+            clock.tick(30)
+
+        pygame.quit()
+
+if __name__ == "__main__":
+    game()
